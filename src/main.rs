@@ -114,7 +114,9 @@ struct Answer {
 	task: Task,
 	points: u16,
 	double: bool,
-	wanted_question: String
+	wanted_question: String,
+	#[serde(skip)]
+	tries: Option<Vec<Try>>,
 }
 
 #[derive(Deserialize)]
@@ -131,7 +133,27 @@ enum Rating {
 	negative,
 }
 
+struct Board {
+	rows: Answers,
+	players: Vec<Player>,
+}
 
+struct Player {
+	id: u8,
+	name: String,
+	points: String,
+}
+
+struct Try {
+	player: String,
+	try_result: AnswerResult,
+}
+
+enum AnswerResult {
+	positive(u8),
+	negative(u8),
+	neutral
+}
 
 enum Status {
 	Registration,
