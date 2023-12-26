@@ -92,6 +92,28 @@ struct AdminQuery {
 	reset: Option<bool>,
 }
 
+#[derive(Deserialize)]
+struct Answers {
+	categories: Vec<Category>,
+}
+
+#[derive(Deserialize)]
+struct Category {
+	name: String,
+	answers: Vec<Answer>,
+}
+
+#[derive(Deserialize)]
+struct Answer {
+	task: Task,
+}
+
+#[derive(Deserialize)]
+enum Task {
+	Picture(Vec<u8>),
+	Text(String),
+}
+
 enum Status {
 	Registration,
 	BuzzerActive,
