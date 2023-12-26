@@ -88,8 +88,8 @@ struct RegisterQuery {
 
 #[derive(Deserialize)]
 struct AdminQuery {
-	setstate: u16,
-	reset: bool,
+	setstate: Option<u16>,
+	reset: Option<bool>,
 }
 
 enum Status {
@@ -99,6 +99,11 @@ enum Status {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+	let args: Vec<String> = std::env::args().collect();
+	let mut pwd = std::env::current_dir()?;
+	if args.len() < 2 { panic!("Provide a file to read the questions from!"); }
+	pwd.push(&args[1]);
+	
 	let status = Arc::new(RwLock::new(Status::Registration));
 	let ip_cache = Cache::<String, String>::builder().build();
 	HttpServer::new(move || {
