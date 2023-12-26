@@ -733,6 +733,7 @@ dependencies = [
  "moka",
  "regex",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

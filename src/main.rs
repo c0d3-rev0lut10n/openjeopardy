@@ -19,6 +19,8 @@
 #[macro_use]
 extern crate lazy_static;
 
+use std::fs::File;
+use std::io::Read;
 use std::sync::{Arc, RwLock};
 use actix_web::{get, post, delete, web, App, HttpRequest, HttpResponse, HttpServer, Responder, web::Redirect};
 use moka::future::Cache;
@@ -125,6 +127,14 @@ async fn main() -> std::io::Result<()> {
 	let mut pwd = std::env::current_dir()?;
 	if args.len() < 2 { panic!("Provide a file to read the questions from!"); }
 	pwd.push(&args[1]);
+	
+	let data_file = File::open(&pwd);
+	if data_file.is_err() { panic!("Could not read data file!"); }
+	let mut data_file = data_file.unwrap();
+	let mut file_bytes = vec![];
+	if data_file.read_to_end(&mut file_bytes).is_err() { panic!("Could not read data file!"); }
+	
+	let answers: Answers = serde_json::from_str(&String::from_utf8(file_bytes).expect("Data file is not valid UTF-8")).expect("Data file structure invalid");
 	
 	let status = Arc::new(RwLock::new(Status::Registration));
 	let ip_cache = Cache::<String, String>::builder().build();
