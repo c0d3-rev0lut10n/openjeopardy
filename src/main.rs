@@ -23,6 +23,7 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::{Arc, RwLock};
 use actix_web::{get, post, delete, web, App, HttpRequest, HttpResponse, HttpServer, Responder, web::Redirect};
+use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD as BASE64};
 use moka::future::Cache;
 use serde::Deserialize;
 use regex::Regex;
@@ -90,8 +91,11 @@ struct RegisterQuery {
 
 #[derive(Deserialize)]
 struct AdminQuery {
-	setstate: Option<u16>,
-	reset: Option<bool>,
+	setstate: Option<u16>, // set state: Registration or BuzzerActive
+	reset: Option<bool>, // reset entire game, kicking all players
+	player: Option<u8>, // select a player that shall be active now
+	value: Option<u16>, // set value for double jeopardies
+	rating: Option<Rating>, // when a question and a player are active, this decides about the points given
 }
 
 #[derive(Deserialize)]
@@ -108,13 +112,26 @@ struct Category {
 #[derive(Deserialize)]
 struct Answer {
 	task: Task,
+	points: u16,
+	double: bool,
+	wanted_question: String
 }
 
 #[derive(Deserialize)]
 enum Task {
-	Picture(Vec<u8>),
+	Picture(String),
 	Text(String),
 }
+
+#[allow(non_camel_case_types)] // this is parsed from query string, which is lowercase by default
+#[derive(Deserialize)]
+enum Rating {
+	positive,
+	neutral,
+	negative,
+}
+
+
 
 enum Status {
 	Registration,
@@ -188,7 +205,7 @@ async fn buzz(req: HttpRequest, ip_cache: web::Data<Cache<String, String>>) -> i
 }
 
 #[get("/admin")]
-async fn admin(req: HttpRequest) -> impl Responder {
+async fn admin(req: HttpRequest, query: web::Query<AdminQuery>) -> impl Responder {
 	let ip = match req.peer_addr() {
 		Some(res) => res.ip(),
 		None => return HttpResponse::InternalServerError().body("Could not get IP address".as_bytes())
