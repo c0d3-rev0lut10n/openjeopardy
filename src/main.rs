@@ -19,8 +19,8 @@
 #[macro_use]
 extern crate lazy_static;
 
-use std::fs::File;
-use std::io::Read;
+use std::fs;
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use actix_web::{get, post, delete, web, App, HttpRequest, HttpResponse, HttpServer, Responder, web::Redirect};
 use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD as BASE64};
@@ -98,18 +98,18 @@ struct AdminQuery {
 	rating: Option<Rating>, // when a question and a player are active, this decides about the points given
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 struct Answers {
 	categories: Vec<Category>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Debug)]
 struct Category {
 	name: String,
 	answers: Vec<Answer>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Debug)]
 struct Answer {
 	task: Task,
 	points: u16,
@@ -119,36 +119,40 @@ struct Answer {
 	tries: Option<Vec<Try>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize, Debug)]
 enum Task {
 	Picture(String),
 	Text(String),
 }
 
 #[allow(non_camel_case_types)] // this is parsed from query string, which is lowercase by default
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 enum Rating {
 	positive,
 	neutral,
 	negative,
 }
 
+#[derive(Clone)]
 struct Board {
 	rows: Answers,
 	players: Vec<Player>,
 }
 
+#[derive(Clone)]
 struct Player {
 	id: u8,
 	name: String,
 	points: String,
 }
 
+#[derive(Clone, Debug)]
 struct Try {
 	player: String,
 	try_result: AnswerResult,
 }
 
+#[derive(Clone, Debug)]
 enum AnswerResult {
 	positive(u8),
 	negative(u8),
@@ -163,17 +167,15 @@ enum Status {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
 	let args: Vec<String> = std::env::args().collect();
-	let mut pwd = std::env::current_dir()?;
+	let pwd = std::env::current_dir()?;
+	let mut path = pwd.clone();
 	if args.len() < 2 { panic!("Provide a file to read the questions from!"); }
-	pwd.push(&args[1]);
+	path.push(&args[1]);
 	
-	let data_file = File::open(&pwd);
-	if data_file.is_err() { panic!("Could not read data file!"); }
-	let mut data_file = data_file.unwrap();
-	let mut file_bytes = vec![];
-	if data_file.read_to_end(&mut file_bytes).is_err() { panic!("Could not read data file!"); }
+	let answers_file = fs::read_to_string(path.clone());
+	if answers_file.is_err() { panic!("Could not parse data file!"); }
 	
-	let answers: Answers = serde_json::from_str(&String::from_utf8(file_bytes).expect("Data file is not valid UTF-8")).expect("Data file structure invalid");
+	let answers: Answers = serde_json::from_str(&answers_file.unwrap()).expect("Data file structure invalid!");
 	
 	let status = Arc::new(RwLock::new(Status::Registration));
 	let ip_cache = Cache::<String, String>::builder().build();
@@ -181,6 +183,8 @@ async fn main() -> std::io::Result<()> {
 		App::new()
 			.app_data(web::Data::new(status.clone()))
 			.app_data(web::Data::new(ip_cache.clone()))
+			.app_data(web::Data::new(pwd.clone()))
+			.app_data(web::Data::new(answers.clone()))
 			.service(register)
 			.service(buzz)
 			.service(admin)
@@ -227,7 +231,7 @@ async fn buzz(req: HttpRequest, ip_cache: web::Data<Cache<String, String>>) -> i
 }
 
 #[get("/admin")]
-async fn admin(req: HttpRequest, query: web::Query<AdminQuery>) -> impl Responder {
+async fn admin(req: HttpRequest, query: web::Query<AdminQuery>, pwd: web::Data<PathBuf>, answers: web::Data<Answers>) -> impl Responder {
 	let ip = match req.peer_addr() {
 		Some(res) => res.ip(),
 		None => return HttpResponse::InternalServerError().body("Could not get IP address".as_bytes())
@@ -235,7 +239,24 @@ async fn admin(req: HttpRequest, query: web::Query<AdminQuery>) -> impl Responde
 	if !ip.is_loopback() {
 		return HttpResponse::Unauthorized().body("Not an admin".as_bytes());
 	}
-	HttpResponse::Ok().finish()
+	let mut path = PathBuf::clone(&pwd);
+	path.push("admin.html");
+	let admin_page_file = fs::read_to_string(&path);
+	if admin_page_file.is_err() { return HttpResponse::InternalServerError().body("Could not parse admin.html in your PWD".as_bytes()) }
+	let mut admin_page = admin_page_file.unwrap();
+	
+	let mut i = 0;
+	for category in &answers.categories {
+		i = i + 1;
+		admin_page = admin_page.replace(&format!("CAT{}", i), &category.name);
+		let mut j = 0;
+		for answer in &category.answers {
+			j = j + 1;
+			admin_page = admin_page.replace(&format!("C{}F{}", i, j), &answer.points.to_string());
+		}
+	}
+	
+	HttpResponse::Ok().body(admin_page.into_bytes())
 }
 
 #[get("/")]
