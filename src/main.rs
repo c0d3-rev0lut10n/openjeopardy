@@ -19,6 +19,7 @@
 #[macro_use]
 extern crate lazy_static;
 
+use crate::AnswerResult::*;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -175,7 +176,9 @@ async fn main() -> std::io::Result<()> {
 	let answers_file = fs::read_to_string(path.clone());
 	if answers_file.is_err() { panic!("Could not parse data file!"); }
 	
-	let answers: Answers = serde_json::from_str(&answers_file.unwrap()).expect("Data file structure invalid!");
+	let mut answers: Answers = serde_json::from_str(&answers_file.unwrap()).expect("Data file structure invalid!");
+	answers.categories[0].answers[1].tries = Some(vec![Try {player: "bad".to_string(), try_result: AnswerResult::negative(100)}, Try {player: "42".to_string(), try_result: AnswerResult::positive(100)}]);
+	//answers.categories[0].answers[1].tries.unwrap().push(Try {player: "42".to_string(), try_result: AnswerResult::positive(10)});
 	
 	let status = Arc::new(RwLock::new(Status::Registration));
 	let ip_cache = Cache::<String, String>::builder().build();
@@ -252,7 +255,27 @@ async fn admin(req: HttpRequest, query: web::Query<AdminQuery>, pwd: web::Data<P
 		let mut j = 0;
 		for answer in &category.answers {
 			j = j + 1;
-			admin_page = admin_page.replace(&format!("C{}F{}", i, j), &answer.points.to_string());
+			let mut text = String::new();
+			if answer.tries.is_some() {
+				let tries = answer.tries.clone().unwrap();
+				for m_try in tries {
+					text = match m_try.try_result {
+						positive(points) => {
+							text + "+" + &m_try.player + " (" + &points.to_string() + ")<br>"
+						}
+						negative(points) => {
+							text + "-" + &m_try.player + " (" + &points.to_string() + ")<br>"
+						}
+						neutral => {
+							text + "0" + &m_try.player + "<br>"
+						}
+					};
+				}
+			}
+			else {
+				text = answer.points.to_string()
+			}
+			admin_page = admin_page.replace(&format!("C{}F{}", i, j), &text);
 		}
 	}
 	
