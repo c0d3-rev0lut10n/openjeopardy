@@ -92,7 +92,7 @@ struct RegisterQuery {
 
 #[derive(Deserialize)]
 struct AdminQuery {
-	setstate: Option<u16>, // set state: Registration or BuzzerActive
+	setstate: Option<u8>, // set state: Registration or BuzzerActive
 	reset: Option<bool>, // reset entire game, kicking all players
 	player: Option<u8>, // select a player that shall be active now
 	value: Option<u16>, // set value for double jeopardies
