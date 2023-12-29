@@ -123,7 +123,6 @@ struct Answer {
 	task: Task,
 	points: u16,
 	double: bool,
-	wanted_question: String,
 	#[serde(skip)]
 	tries: Option<Vec<Try>>,
 }
