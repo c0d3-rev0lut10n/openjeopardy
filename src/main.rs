@@ -154,6 +154,11 @@ struct Player {
 	points: String,
 }
 
+#[derive(Clone)]
+struct ActivePlayer {
+	id: u8,
+}
+
 #[derive(Clone, Debug)]
 struct Try {
 	player: String,
@@ -162,8 +167,8 @@ struct Try {
 
 #[derive(Clone, Debug)]
 enum AnswerResult {
-	positive(u8),
-	negative(u8),
+	positive(u16),
+	negative(u16),
 	neutral
 }
 
@@ -183,18 +188,22 @@ async fn main() -> std::io::Result<()> {
 	let answers_file = fs::read_to_string(path.clone());
 	if answers_file.is_err() { panic!("Could not parse data file!"); }
 	
-	let mut answers: Answers = serde_json::from_str(&answers_file.unwrap()).expect("Data file structure invalid!");
-	answers.categories[0].answers[1].tries = Some(vec![Try {player: "bad".to_string(), try_result: AnswerResult::negative(100)}, Try {player: "42".to_string(), try_result: AnswerResult::positive(100)}]);
-	answers.categories[0].answers[1].tries.as_mut().unwrap().push(Try {player: "42".to_string(), try_result: AnswerResult::positive(10)});
+	let mut answers: Arc<RwLock<Answers>> = Arc::new(RwLock::new(serde_json::from_str(&answers_file.unwrap()).expect("Data file structure invalid!")));
+	//answers.categories[0].answers[1].tries = Some(vec![Try {player: "bad".to_string(), try_result: AnswerResult::negative(100)}, Try {player: "42".to_string(), try_result: AnswerResult::positive(100)}]);
+	//answers.categories[0].answers[1].tries.as_mut().unwrap().push(Try {player: "42".to_string(), try_result: AnswerResult::positive(10)});
 	
 	let status = Arc::new(RwLock::new(Status::Registration));
 	let ip_cache = Cache::<String, String>::builder().build();
+	let players = Arc::new(RwLock::new(Vec::<Player>::new()));
+	let active_player = Arc::new(RwLock::new(ActivePlayer{id: 0}));
 	HttpServer::new(move || {
 		App::new()
 			.app_data(web::Data::new(status.clone()))
 			.app_data(web::Data::new(ip_cache.clone()))
 			.app_data(web::Data::new(pwd.clone()))
-			.app_data(web::Data::new(RwLock::new(answers.clone())))
+			.app_data(web::Data::new(answers.clone()))
+			.app_data(web::Data::new(players.clone()))
+			.app_data(web::Data::new(active_player.clone()))
 			.service(register)
 			.service(buzz)
 			.service(admin)
@@ -242,7 +251,7 @@ async fn buzz(req: HttpRequest, ip_cache: web::Data<Cache<String, String>>) -> i
 }
 
 #[get("/answer")]
-async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::Data<PathBuf>, answers: web::Data<RwLock<Answers>>) -> impl Responder {
+async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::Data<PathBuf>, answers: web::Data<Arc<RwLock<Answers>>>, players: web::Data<Arc<RwLock<Vec<Player>>>>, active_player: web::Data<Arc<RwLock<ActivePlayer>>>) -> impl Responder {
 	let ip = match req.peer_addr() {
 		Some(res) => res.ip(),
 		None => return HttpResponse::InternalServerError().body("Could not get IP address".as_bytes())
@@ -274,7 +283,26 @@ async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::
 	answer_page = answer_page.replace("ANSWER", &query.a.to_string());
 	
 	if let Some(rating) = &query.rating {
-		//answers.categories[query.c as usize].answers[query.a as usize]
+		let active_player = active_player.read().unwrap();
+		let player_list = &players.read().unwrap();
+		let player_name = if active_player.id as usize >= player_list.len() {
+			format!("UNKNOWN No.{}", &(active_player.id + 1).to_string())
+		}
+		else {
+			player_list[active_player.id as usize].name.clone()
+		};
+		if answers.categories[query.c as usize].answers[query.a as usize].tries.is_none() {
+			answers.categories[query.c as usize].answers[query.a as usize].tries = Some(Vec::<Try>::new());
+		}
+		let answer_result = match rating {
+			Rating::positive => { AnswerResult::positive(answers.categories[query.c as usize].answers[query.a as usize].points) }
+			Rating::neutral => { AnswerResult::neutral }
+			Rating::negative => { AnswerResult::negative(answers.categories[query.c as usize].answers[query.a as usize].points) }
+		};
+		answers.categories[query.c as usize].answers[query.a as usize].tries.as_mut().unwrap().push(Try {
+			player: player_name,
+			try_result: answer_result
+		});
 	}
 	if let Some(value) = &query.value {
 		answers.categories[query.c as usize].answers[query.a as usize].points = *value;
@@ -284,7 +312,7 @@ async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::
 }
 
 #[get("/admin")]
-async fn admin(req: HttpRequest, query: web::Query<AdminQuery>, pwd: web::Data<PathBuf>, answers: web::Data<RwLock<Answers>>) -> impl Responder {
+async fn admin(req: HttpRequest, query: web::Query<AdminQuery>, pwd: web::Data<PathBuf>, answers: web::Data<Arc<RwLock<Answers>>>, active_player: web::Data<Arc<RwLock<ActivePlayer>>>) -> impl Responder {
 	let ip = match req.peer_addr() {
 		Some(res) => res.ip(),
 		None => return HttpResponse::InternalServerError().body("Could not get IP address".as_bytes())
@@ -298,7 +326,7 @@ async fn admin(req: HttpRequest, query: web::Query<AdminQuery>, pwd: web::Data<P
 	if admin_page_file.is_err() { return HttpResponse::InternalServerError().body("Could not parse admin.html in your PWD".as_bytes()) }
 	let mut admin_page = admin_page_file.unwrap();
 	
-	let mut answers = answers.write().unwrap();
+	let answers = answers.read().unwrap();
 	
 	let mut i = 0;
 	for category in &answers.categories {
@@ -313,13 +341,13 @@ async fn admin(req: HttpRequest, query: web::Query<AdminQuery>, pwd: web::Data<P
 				for m_try in tries {
 					text = match m_try.try_result {
 						positive(points) => {
-							text + "+" + &m_try.player + " (" + &points.to_string() + ")<br>"
+							text + "+ " + &m_try.player + " (" + &points.to_string() + ")<br>"
 						}
 						negative(points) => {
-							text + "-" + &m_try.player + " (" + &points.to_string() + ")<br>"
+							text + "- " + &m_try.player + " (" + &points.to_string() + ")<br>"
 						}
 						neutral => {
-							text + "0" + &m_try.player + "<br>"
+							text + "0 " + &m_try.player + "<br>"
 						}
 					};
 				}
