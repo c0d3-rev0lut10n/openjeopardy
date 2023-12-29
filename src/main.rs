@@ -108,6 +108,8 @@ struct AdminQuery {
 #[derive(Clone, Deserialize)]
 struct Answers {
 	categories: Vec<Category>,
+	#[serde(skip)]
+	active_player: Option<u8>,
 }
 
 #[derive(Clone, Deserialize, Debug)]
@@ -249,6 +251,7 @@ async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::
 	if !ip.is_loopback() {
 		return HttpResponse::Unauthorized().body("Not an admin".as_bytes());
 	}
+	
 	HttpResponse::Ok().finish()
 }
 
