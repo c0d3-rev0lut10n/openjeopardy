@@ -147,11 +147,10 @@ struct Board {
 	players: Vec<Player>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct Player {
-	id: u8,
 	name: String,
-	points: String,
+	points: i32,
 }
 
 #[derive(Clone)]
@@ -217,7 +216,7 @@ async fn main() -> std::io::Result<()> {
 }
 
 #[get("/register")]
-async fn register(req: HttpRequest, query: web::Query<RegisterQuery>, status: web::Data<Arc<RwLock<Status>>>, ip_cache: web::Data<Cache<String, String>>) -> impl Responder {
+async fn register(req: HttpRequest, query: web::Query<RegisterQuery>, status: web::Data<Arc<RwLock<Status>>>, ip_cache: web::Data<Cache<String, String>>, players: web::Data<Arc<RwLock<Vec<Player>>>>) -> impl Responder {
 	match *(status.read().unwrap()) {
 		Status::Registration => {},
 		_ => {
@@ -232,6 +231,12 @@ async fn register(req: HttpRequest, query: web::Query<RegisterQuery>, status: we
 		None => return HttpResponse::InternalServerError().body("Could not get IP address".as_bytes())
 	};
 	ip_cache.insert(ip.clone(), query.name.clone()).await;
+	let mut players = players.write().unwrap();
+	players.push(Player {
+		name: query.name.to_string(),
+		points: 0
+	});
+	
 	println!("{} registered using name \"{}\"", ip, query.name);
 	HttpResponse::TemporaryRedirect().insert_header(("location", "/buzzer")).finish()
 }
@@ -284,11 +289,20 @@ async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::
 	
 	if let Some(rating) = &query.rating {
 		let active_player = active_player.read().unwrap();
-		let player_list = &players.read().unwrap();
+		let mut player_list = players.write().unwrap();
 		let player_name = if active_player.id as usize >= player_list.len() {
 			format!("UNKNOWN No.{}", &(active_player.id + 1).to_string())
 		}
 		else {
+			match rating {
+				Rating::positive => {
+					player_list[active_player.id as usize].points += answers.categories[query.c as usize].answers[query.a as usize].points as i32;
+				}
+				Rating::negative => {
+					player_list[active_player.id as usize].points -= answers.categories[query.c as usize].answers[query.a as usize].points as i32;
+				}
+				Rating::neutral => {}
+			};
 			player_list[active_player.id as usize].name.clone()
 		};
 		if answers.categories[query.c as usize].answers[query.a as usize].tries.is_none() {
