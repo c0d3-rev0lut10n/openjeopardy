@@ -2,9 +2,21 @@
 	<head>
 		<title>Jeopardy</title>
 		<style>
+			.table {
+				display: flex;
+			}
+			.row {
+				display: flex;
+				flex-direction: column;
+				width: 20vw;
+				font-size: 2vw;
+				text-align: justify;
+				background-color: #aaa;
+				text-decoration: none;
+			}
 			.wrapper {
 				display: flex;
-				height: 100vh;
+				height: 70vh;
 				width: 100vw;
 				text-decoration: none;
 				text-align: center;
@@ -13,7 +25,7 @@
 			}
 			.answer {
 				display: flex;
-				height: 80vh;
+				height: 60vh;
 				width: 80vw;
 				font-size: 8vw;
 				text-decoration: none;
@@ -25,6 +37,20 @@
 		</style>
 	</head>
 	<body>
-		<div class="wrapper"><div class="answer">ANSWER</div></div>
+		<div class="wrapper"><div class="answer">CONTENT</div></div>
+		<div style="height: 1vw;"></div>
+		<div style="margin-left: 10vw;">
+		<div class="table">
+			<div class="row"><a href="/answer?c=CAT&a=ANSWER&rating=positive">Positiv</a></div>
+			<div class="row"><a href="/answer?c=CAT&a=ANSWER&rating=neutral">Neutral</a></div>
+			<div class="row"><a href="/answer?c=CAT&a=ANSWER&rating=negative">Negativ</a></div>
+		</div>
+		<div style="height: 1vw;"></div>
+		<h3>Feldwert-Override:</h3>
+		<form action="/answer">
+			<input type="text" name="value" id="value">
+			<input type="submit" value="Wert setzen">
+		</form>
+		</div>
 	</body>
 </html>
