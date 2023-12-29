@@ -105,7 +105,7 @@ struct AdminQuery {
 	player: Option<u8>, // select a player that shall be active now
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Debug)]
 struct Answers {
 	categories: Vec<Category>,
 	#[serde(skip)]
@@ -185,7 +185,7 @@ async fn main() -> std::io::Result<()> {
 	
 	let mut answers: Answers = serde_json::from_str(&answers_file.unwrap()).expect("Data file structure invalid!");
 	answers.categories[0].answers[1].tries = Some(vec![Try {player: "bad".to_string(), try_result: AnswerResult::negative(100)}, Try {player: "42".to_string(), try_result: AnswerResult::positive(100)}]);
-	//answers.categories[0].answers[1].tries.unwrap().push(Try {player: "42".to_string(), try_result: AnswerResult::positive(10)});
+	answers.categories[0].answers[1].tries.as_mut().unwrap().push(Try {player: "42".to_string(), try_result: AnswerResult::positive(10)});
 	
 	let status = Arc::new(RwLock::new(Status::Registration));
 	let ip_cache = Cache::<String, String>::builder().build();
@@ -250,16 +250,16 @@ async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::
 	if !ip.is_loopback() {
 		return HttpResponse::Unauthorized().body("Not an admin".as_bytes());
 	}
-	
-	let mut answers = answers.write().unwrap();
-	
-	let answer = &answers.categories[query.c as usize].answers[query.a as usize];
-	
 	let mut path = PathBuf::clone(&pwd);
 	path.push("answer.html");
 	let answer_page_file = fs::read_to_string(&path);
 	if answer_page_file.is_err() { return HttpResponse::InternalServerError().body("Could not parse answer.html in your PWD".as_bytes()) }
+	
 	let mut answer_page = answer_page_file.unwrap();
+	
+	let mut answers = answers.write().unwrap();
+	
+	let answer = &answers.categories[query.c as usize].answers[query.a as usize];
 	
 	let answer_string = match &answer.task {
 		Task::Text(text) => {
@@ -274,10 +274,10 @@ async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::
 	answer_page = answer_page.replace("ANSWER", &query.a.to_string());
 	
 	if let Some(rating) = &query.rating {
-		
+		//answers.categories[query.c as usize].answers[query.a as usize]
 	}
 	if let Some(value) = &query.value {
-	
+		answers.categories[query.c as usize].answers[query.a as usize].points = *value;
 	}
 	
 	HttpResponse::Ok().body(answer_page.into_bytes())
