@@ -91,12 +91,18 @@ struct RegisterQuery {
 }
 
 #[derive(Deserialize)]
+struct AnswerQuery {
+	c: u8, // category (0-4)
+	a: u8, // answer (0-4)
+	value: Option<u16>, // set value for double jeopardies
+	rating: Option<Rating>, // when a question and a player are active, this decides about the points given
+}
+
+#[derive(Deserialize)]
 struct AdminQuery {
 	setstate: Option<u8>, // set state: Registration or BuzzerActive
 	reset: Option<bool>, // reset entire game, kicking all players
 	player: Option<u8>, // select a player that shall be active now
-	value: Option<u16>, // set value for double jeopardies
-	rating: Option<Rating>, // when a question and a player are active, this decides about the points given
 }
 
 #[derive(Clone, Deserialize)]
@@ -193,6 +199,7 @@ async fn main() -> std::io::Result<()> {
 			.service(admin)
 			.service(splash)
 			.service(buzzer)
+			.service(get_answer)
 	})
 	.bind((SERVER_ADDRESS, SERVER_PORT))?
 	.run()
@@ -231,6 +238,11 @@ async fn buzz(req: HttpRequest, ip_cache: web::Data<Cache<String, String>>) -> i
 	}
 	println!("{} buzzered!", name.unwrap());
 	HttpResponse::TemporaryRedirect().insert_header(("location", "/buzzer")).finish()
+}
+
+#[get("/answer")]
+async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::Data<PathBuf>) -> impl Responder {
+	HttpResponse::Ok().finish()
 }
 
 #[get("/admin")]
