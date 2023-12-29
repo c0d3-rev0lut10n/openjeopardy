@@ -242,7 +242,7 @@ async fn buzz(req: HttpRequest, ip_cache: web::Data<Cache<String, String>>) -> i
 }
 
 #[get("/answer")]
-async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::Data<PathBuf>) -> impl Responder {
+async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::Data<PathBuf>, answers: web::Data<Answers>) -> impl Responder {
 	let ip = match req.peer_addr() {
 		Some(res) => res.ip(),
 		None => return HttpResponse::InternalServerError().body("Could not get IP address".as_bytes())
@@ -251,7 +251,27 @@ async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::
 		return HttpResponse::Unauthorized().body("Not an admin".as_bytes());
 	}
 	
-	HttpResponse::Ok().finish()
+	let answer = &answers.categories[query.c as usize].answers[query.a as usize];
+	
+	let mut path = PathBuf::clone(&pwd);
+	path.push("answer.html");
+	let answer_page_file = fs::read_to_string(&path);
+	if answer_page_file.is_err() { return HttpResponse::InternalServerError().body("Could not parse answer.html in your PWD".as_bytes()) }
+	let mut answer_page = answer_page_file.unwrap();
+	
+	let answer_string = match &answer.task {
+		Task::Text(text) => {
+			text
+		}
+		Task::Picture(link) => {
+			link // TODO!
+		}
+	};
+	answer_page = answer_page.replace("CONTENT", &answer_string);
+	answer_page = answer_page.replace("CAT", &query.c.to_string());
+	answer_page = answer_page.replace("ANSWER", &query.a.to_string());
+	
+	HttpResponse::Ok().body(answer_page.into_bytes())
 }
 
 #[get("/admin")]
