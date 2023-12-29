@@ -194,7 +194,7 @@ async fn main() -> std::io::Result<()> {
 			.app_data(web::Data::new(status.clone()))
 			.app_data(web::Data::new(ip_cache.clone()))
 			.app_data(web::Data::new(pwd.clone()))
-			.app_data(web::Data::new(answers.clone()))
+			.app_data(web::Data::new(RwLock::new(answers.clone())))
 			.service(register)
 			.service(buzz)
 			.service(admin)
@@ -242,7 +242,7 @@ async fn buzz(req: HttpRequest, ip_cache: web::Data<Cache<String, String>>) -> i
 }
 
 #[get("/answer")]
-async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::Data<PathBuf>, answers: web::Data<Answers>) -> impl Responder {
+async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::Data<PathBuf>, answers: web::Data<RwLock<Answers>>) -> impl Responder {
 	let ip = match req.peer_addr() {
 		Some(res) => res.ip(),
 		None => return HttpResponse::InternalServerError().body("Could not get IP address".as_bytes())
@@ -250,6 +250,8 @@ async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::
 	if !ip.is_loopback() {
 		return HttpResponse::Unauthorized().body("Not an admin".as_bytes());
 	}
+	
+	let mut answers = answers.write().unwrap();
 	
 	let answer = &answers.categories[query.c as usize].answers[query.a as usize];
 	
@@ -271,11 +273,18 @@ async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::
 	answer_page = answer_page.replace("CAT", &query.c.to_string());
 	answer_page = answer_page.replace("ANSWER", &query.a.to_string());
 	
+	if let Some(rating) = &query.rating {
+		
+	}
+	if let Some(value) = &query.value {
+	
+	}
+	
 	HttpResponse::Ok().body(answer_page.into_bytes())
 }
 
 #[get("/admin")]
-async fn admin(req: HttpRequest, query: web::Query<AdminQuery>, pwd: web::Data<PathBuf>, answers: web::Data<Answers>) -> impl Responder {
+async fn admin(req: HttpRequest, query: web::Query<AdminQuery>, pwd: web::Data<PathBuf>, answers: web::Data<RwLock<Answers>>) -> impl Responder {
 	let ip = match req.peer_addr() {
 		Some(res) => res.ip(),
 		None => return HttpResponse::InternalServerError().body("Could not get IP address".as_bytes())
@@ -288,6 +297,8 @@ async fn admin(req: HttpRequest, query: web::Query<AdminQuery>, pwd: web::Data<P
 	let admin_page_file = fs::read_to_string(&path);
 	if admin_page_file.is_err() { return HttpResponse::InternalServerError().body("Could not parse admin.html in your PWD".as_bytes()) }
 	let mut admin_page = admin_page_file.unwrap();
+	
+	let mut answers = answers.write().unwrap();
 	
 	let mut i = 0;
 	for category in &answers.categories {
