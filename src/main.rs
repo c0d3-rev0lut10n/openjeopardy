@@ -242,6 +242,13 @@ async fn buzz(req: HttpRequest, ip_cache: web::Data<Cache<String, String>>) -> i
 
 #[get("/answer")]
 async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::Data<PathBuf>) -> impl Responder {
+	let ip = match req.peer_addr() {
+		Some(res) => res.ip(),
+		None => return HttpResponse::InternalServerError().body("Could not get IP address".as_bytes())
+	};
+	if !ip.is_loopback() {
+		return HttpResponse::Unauthorized().body("Not an admin".as_bytes());
+	}
 	HttpResponse::Ok().finish()
 }
 
