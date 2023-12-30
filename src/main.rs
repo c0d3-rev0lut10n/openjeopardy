@@ -275,14 +275,17 @@ async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::
 	
 	let answer = &answers.categories[query.c as usize].answers[query.a as usize];
 	
-	let answer_string = match &answer.task {
+	let mut answer_string = match &answer.task {
 		Task::Text(text) => {
-			text
+			text.to_string()
 		}
 		Task::Picture(link) => {
-			link // TODO!
+			link.to_string() // TODO!
 		}
 	};
+	if answer.double {
+		answer_string = answer_string + " (DOUBLE)";
+	}
 	answer_page = answer_page.replace("CONTENT", &answer_string);
 	answer_page = answer_page.replace("CAT", &query.c.to_string());
 	answer_page = answer_page.replace("ANSWER", &query.a.to_string());
@@ -326,13 +329,24 @@ async fn get_answer(req: HttpRequest, query: web::Query<AnswerQuery>, pwd: web::
 }
 
 #[get("/admin")]
-async fn admin(req: HttpRequest, query: web::Query<AdminQuery>, pwd: web::Data<PathBuf>, answers: web::Data<Arc<RwLock<Answers>>>, active_player: web::Data<Arc<RwLock<ActivePlayer>>>) -> impl Responder {
+async fn admin(req: HttpRequest, query: web::Query<AdminQuery>, pwd: web::Data<PathBuf>, answers: web::Data<Arc<RwLock<Answers>>>, players: web::Data<Arc<RwLock<Vec<Player>>>>, active_player: web::Data<Arc<RwLock<ActivePlayer>>>, status: web::Data<Arc<RwLock<Status>>>) -> impl Responder {
 	let ip = match req.peer_addr() {
 		Some(res) => res.ip(),
 		None => return HttpResponse::InternalServerError().body("Could not get IP address".as_bytes())
 	};
 	if !ip.is_loopback() {
 		return HttpResponse::Unauthorized().body("Not an admin".as_bytes());
+	}
+	if query.player.is_some() {
+		let mut active_player = active_player.write().unwrap();
+		*active_player = ActivePlayer { id: query.player.unwrap() };
+	}
+	if query.setstate.is_some() {
+		let mut status = status.write().unwrap();
+		*status = match query.setstate.unwrap() {
+			0 => { Status::Registration },
+			_ => { Status::BuzzerActive },
+		};
 	}
 	let mut path = PathBuf::clone(&pwd);
 	path.push("admin.html");
@@ -372,6 +386,18 @@ async fn admin(req: HttpRequest, query: web::Query<AdminQuery>, pwd: web::Data<P
 			admin_page = admin_page.replace(&format!("C{}F{}", i, j), &text);
 		}
 	}
+	let player_list = players.read().unwrap();
+	let mut i = 1;
+	println!("{:?}", player_list);
+	for player in player_list.iter() {
+		admin_page = admin_page.replace(&format!("P{}", i), &format!("{}: {}", &player.name, &player.points.to_string()));
+		i += 1;
+	}
+	let state = match *status.read().unwrap() {
+		Status::Registration => 1,
+		Status::BuzzerActive => 0
+	};
+	admin_page = admin_page.replace("STATE", &state.to_string());
 	
 	HttpResponse::Ok().body(admin_page.into_bytes())
 }
