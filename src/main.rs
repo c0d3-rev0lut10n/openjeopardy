@@ -388,7 +388,6 @@ async fn admin(req: HttpRequest, query: web::Query<AdminQuery>, pwd: web::Data<P
 	}
 	let player_list = players.read().unwrap();
 	let mut i = 1;
-	println!("{:?}", player_list);
 	for player in player_list.iter() {
 		admin_page = admin_page.replace(&format!("P{}", i), &format!("{}: {}", &player.name, &player.points.to_string()));
 		i += 1;
